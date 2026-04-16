@@ -1,0 +1,13 @@
+{
+  "name": "Pixel Realm Online",
+  "shortName": "Pixel Realm",
+  "subtitle": "Browser MMORPG",
+  "description": "A real-time browser-based 2D MMORPG with PixiJS WebGL rendering, multiplayer WebSocket gameplay, AI agents, Ragnarok-inspired pixel art, combat, and a living world.",
+  "shortDescription": "Multiplayer pixel art MMORPG",
+  "primaryCategory": "games",
+  "tags": ["mmorpg", "game", "multiplayer", "pixelart", "rpg"],
+  "splashBackgroundColor": "#1a0a2e",
+  "tagline": "Enter the Pixel Realm",
+  "requiredChains": ["eip155:8453", "eip155:1"],
+  "shareButtonTitle": "Play Now"
+}
