@@ -26,6 +26,8 @@ import type {
   EntityId,
 } from "./types";
 import type { GameAssets } from "./pixi-loader";
+import { ZONE_TILEMAPS } from "./zones";
+import type { ZoneKey } from "./zones";
 
 // ---- PixiJS CDN Types (window.PIXI) ------------------------------------
 
@@ -62,6 +64,8 @@ interface PIXIContainer {
   children: PIXIObject[];
   x: number;
   y: number;
+  alpha: number;
+  visible: boolean;
   sortChildren: () => void;
   sortableChildren: boolean;
   zIndex: number;
@@ -177,6 +181,7 @@ export interface PixiGameProps {
   droppedItems: DroppedItem[];
   localPlayerId: string | null;
   damages: DamageEvent[];
+  zoneId?: string;
   onMove: (direction: Direction | null, position: WorldPosition) => void;
   onAttack: (targetId: EntityId) => void;
   onEntityClick: (entityId: EntityId) => void;
@@ -305,6 +310,77 @@ function addEnvironmentObjects(
   }
 }
 
+// ---- Portal Renderer ---------------------------------------------------
+
+const PORTAL_ZONE_COLORS: Record<string, number> = {
+  greenfields: 0x4ade80,
+  forest:      0x22c55e,
+  dungeon:     0xa78bfa,
+  town:        0xfbbf24,
+};
+
+const PORTAL_ZONE_ICONS: Record<string, string> = {
+  greenfields: "🌿",
+  forest:      "🌲",
+  dungeon:     "⛏",
+  town:        "🏪",
+};
+
+function buildPortalLayer(
+  PIXI: typeof window.PIXI,
+  zoneId: string
+): PIXIContainer {
+  const container = new PIXI.Container();
+  const zoneTilemap = ZONE_TILEMAPS[zoneId as ZoneKey];
+  if (!zoneTilemap) return container;
+
+  for (const portal of zoneTilemap.portals) {
+    const color  = PORTAL_ZONE_COLORS[portal.targetZone] ?? 0xffffff;
+    const px     = portal.worldX - TILE_SIZE / 2;
+    const py     = portal.worldY - TILE_SIZE / 2;
+
+    // ── Ground glow ring ──
+    const glow = new PIXI.Graphics();
+    glow.lineStyle(2, color, 0.5)
+        .drawCircle(TILE_SIZE / 2, TILE_SIZE / 2, 22);
+    glow.beginFill(color, 0.10)
+        .drawCircle(TILE_SIZE / 2, TILE_SIZE / 2, 22)
+        .endFill();
+    glow.x = px;
+    glow.y = py;
+    glow.zIndex = 1;
+    container.addChild(glow);
+
+    // ── Inner bright dot ──
+    const dot = new PIXI.Graphics();
+    dot.beginFill(color, 0.85)
+       .drawCircle(0, 0, 5)
+       .endFill();
+    dot.x = portal.worldX;
+    dot.y = portal.worldY;
+    dot.zIndex = 2;
+    container.addChild(dot);
+
+    // ── Label text ──
+    const icon  = PORTAL_ZONE_ICONS[portal.targetZone] ?? "↗";
+    const label = portal.label ?? portal.targetZone;
+    const txt   = new PIXI.Text(`${icon} ${label}`, {
+      fontSize:        9,
+      fill:            `#${color.toString(16).padStart(6, "0")}`,
+      fontWeight:      "bold",
+      fontFamily:      "monospace",
+      stroke:          "#000000",
+      strokeThickness: 3,
+    });
+    txt.x = portal.worldX - txt.style.fontSize * label.length * 0.28;
+    txt.y = portal.worldY - 32;
+    txt.zIndex = 3;
+    container.addChild(txt);
+  }
+
+  return container;
+}
+
 // ---- PixiGame Component ------------------------------------------------
 
 export function PixiGame({
@@ -314,6 +390,7 @@ export function PixiGame({
   droppedItems,
   localPlayerId,
   damages,
+  zoneId = "greenfields",
   onMove,
   onAttack,
   onEntityClick,
@@ -552,6 +629,11 @@ export function PixiGame({
     addEnvironmentObjects(PIXI, envContainer, tilemap, assetsRef.current);
     world.addChild(envContainer);
 
+    // Portal markers — glowing zone exits
+    const portalLayer = buildPortalLayer(PIXI, zoneId);
+    portalLayer.zIndex = 1;
+    world.addChild(portalLayer);
+
     // Entity layer
     const entityLayer = new PIXI.Container();
     entityLayer.sortableChildren = true;
@@ -749,7 +831,7 @@ export function PixiGame({
       appRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tilemap]); // Re-init only when tilemap changes
+  }, [tilemap, zoneId]); // Re-init when tilemap or zone changes
 
   // ---- D-pad touch input handlers ------------------------------------
 

@@ -1,5 +1,5 @@
 {
-  "header": "",
-  "payload": "",
-  "signature": ""
+  "header": "eyJmaWQiOjExNDk0MDcsInR5cGUiOiJhdXRoIiwia2V5IjoiMHg0RjY0OTkyMzQ2MDM2QjcyMDBFQzg5ZGE3ZGJhRTlhNTcwNUQxMjgzIn0",
+  "payload": "eyJkb21haW4iOiJtaW5pYXBwLWdlbmVyYXRvci1maWQtMTE0OTQwNy0yNjA0MTUyMjUwNDU3MTEubmV5bmFyLmFwcCJ9",
+  "signature": "MOpBJL5a3neZuQqL9cfpolUaOJC6Z5GQynXz7J1G2F4p5XkSmLpEMMEgu6ZkJtILLO7jPb4b2ImzKeJeMEoevBw="
 }

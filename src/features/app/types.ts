@@ -20,6 +20,7 @@ export interface TileMap {
   zoneId: ZoneId;
   width: number;  // in tiles
   height: number; // in tiles
+  tileSize?: number;
   tiles: TileType[][];
   spawnPoints: WorldPosition[];
 }
@@ -88,9 +89,13 @@ export interface AIState {
 
 export interface DamageEvent {
   attackerId: EntityId;
+  /** Server sends this as `entityId` — keep both for compatibility */
+  entityId: EntityId;
   targetId: EntityId;
   damage: number;
   timestamp: number;
+  /** Server sends this as `isCrit` — keep both for compatibility */
+  isCrit: boolean;
   isCritical: boolean;
 }
 

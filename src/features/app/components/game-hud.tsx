@@ -7,8 +7,11 @@
  */
 
 import { useEffect, useState, useRef } from "react";
-import type { PlayerEntity, Entity } from "../types";
+import type { PlayerEntity, Entity, TileMap } from "../types";
 import { WalletWidget } from "./wallet-widget";
+import { Minimap } from "./minimap";
+import { MuteButton } from "@/neynar-farcaster-sdk/audio";
+import { ZoneBadge } from "./zone-portal";
 
 interface ChatMessage {
   id: string;
@@ -27,6 +30,9 @@ interface KillFeedEntry {
 
 interface GameHUDProps {
   player: PlayerEntity | null;
+  entities: Entity[];
+  tilemap: TileMap | null;
+  localPlayerId: string | null;
   connectedPlayers: number;
   ping: number;
   chatMessages: ChatMessage[];
@@ -37,6 +43,9 @@ interface GameHUDProps {
 
 export function GameHUD({
   player,
+  entities,
+  tilemap,
+  localPlayerId,
   connectedPlayers,
   ping,
   chatMessages,
@@ -135,14 +144,24 @@ export function GameHUD({
         ))}
       </div>
 
-      {/* ── Server info ── */}
+      {/* ── Server info + mute ── */}
       <div style={styles.serverInfo}>
         <span style={{ color: ping < 100 ? "#44ff44" : ping < 200 ? "#ffaa00" : "#ff4444" }}>
           ⚡{ping}ms
         </span>
         <span style={{ color: "#aaaaaa", marginLeft: 6 }}>👥{connectedPlayers}</span>
-        <span style={{ color: "#666666", marginLeft: 6, fontSize: 9 }}>{zone}</span>
+        <span style={{ marginLeft: 6 }}><ZoneBadge zoneId={zone} /></span>
+        <span style={{ marginLeft: 8, pointerEvents: "all" }}>
+          <MuteButton />
+        </span>
       </div>
+
+      {/* ── Minimap ── */}
+      <Minimap
+        tilemap={tilemap}
+        entities={entities}
+        localPlayerId={localPlayerId}
+      />
 
       {/* ── Chat ── */}
       <div style={styles.chatArea}>
@@ -341,6 +360,8 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 3,
     border: "1px solid rgba(255,255,255,0.1)",
     pointerEvents: "none",
+    display: "flex",
+    alignItems: "center",
   },
 
   chatArea: {

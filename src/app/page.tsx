@@ -1,7 +1,11 @@
 import { publicConfig } from "@/config/public-config";
 import { MiniApp } from "@/features/app/mini-app";
 import { getFarcasterPageMetadata } from "@/neynar-farcaster-sdk/src/nextjs/get-farcaster-page-metadata";
-import { Metadata } from "next";
+import type { Metadata } from "next";
+
+type PageProps<_Route extends string = string> = {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+};
 
 export async function generateMetadata({
   searchParams,

@@ -1,13 +1,14 @@
 {
-  "name": "pixel-realm-game-server",
+  "name": "game-server",
   "version": "1.0.0",
-  "description": "Pixel Realm Online - WebSocket game server",
-  "main": "server.js",
+  "main": "server/server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js"
+    "start": "node server/server.js"
   },
   "dependencies": {
-    "ws": "^8.18.0"
+    "ws": "^8.13.0",
+    "pg": "^8.11.3",
+    "drizzle-orm": "^0.30.10",
+    "ioredis": "^5.3.2"
   }
 }

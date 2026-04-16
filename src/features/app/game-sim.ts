@@ -9,15 +9,54 @@
  */
 
 import type {
-  Entity,
-  PlayerEntity,
-  AgentEntity,
-  MonsterEntity,
   TileMap,
   TileType,
   Direction,
   WorldPosition,
+  Item,
+  DroppedItem,
 } from "./types";
+
+// ---- Local flat-model entity types (used by the simulator) ----------------
+
+interface Entity {
+  id: string;
+  type: "player" | "agent" | "monster" | "npc";
+  name: string;
+  position: WorldPosition;
+  direction: Direction;
+  hp: number;
+  maxHp: number;
+  atk: number;
+  def: number;
+  level: number;
+  xp: number;
+  xpToNext: number;
+  gold: number;
+  isMoving: boolean;
+}
+
+interface PlayerEntity extends Entity {
+  type: "player";
+  fid: number;
+  inventory?: Item[];
+}
+
+interface AgentEntity extends Entity {
+  type: "agent";
+  color: string;
+  behavior: "wander" | "aggressive" | "farming";
+  fid: number;
+}
+
+interface MonsterEntity extends Entity {
+  type: "monster";
+  kind: string;
+  xpReward: number;
+  goldReward: number;
+}
+
+import { ZONE_TILEMAPS, ZONES, type ZoneKey, generateZoneTilemap } from "./zones";
 
 // ---- Config ---------------------------------------------------------------
 
@@ -95,10 +134,12 @@ function generateTilemap(): TileMap {
   for (let i = 2; i < SIM_CONFIG.WORLD_HEIGHT - 2; i++) tiles[i][cx] = "path";
 
   return {
+    zoneId: "zone_start",
     width: SIM_CONFIG.WORLD_WIDTH,
     height: SIM_CONFIG.WORLD_HEIGHT,
     tileSize: SIM_CONFIG.TILE_SIZE,
     tiles,
+    spawnPoints: [],
   };
 }
 
@@ -129,6 +170,38 @@ const MONSTER_TEMPLATES = {
 };
 type MonsterKind = keyof typeof MONSTER_TEMPLATES;
 const MONSTER_KINDS: MonsterKind[] = ["slime", "goblin", "skeleton", "wolf"];
+
+// ---- Loot tables ----------------------------------------------------------
+
+let _itemId = 0;
+function itemId() { return `item_${++_itemId}`; }
+
+const LOOT_TABLES: Record<MonsterKind, Array<{ chance: number; make: () => Item }>> = {
+  slime: [
+    { chance: 0.4, make: () => ({ id: itemId(), itemType: "potion", name: "Slime Jelly", description: "A wobbly restorative potion. Restores 30 HP.", value: 8, quantity: 1, stats: { hp: 30 } }) },
+    { chance: 0.15, make: () => ({ id: itemId(), itemType: "material", name: "Slime Core", description: "A dense core from a rare slime.", value: 15, quantity: 1 }) },
+  ],
+  goblin: [
+    { chance: 0.35, make: () => ({ id: itemId(), itemType: "weapon", name: "Rusty Dagger", description: "A crude goblin blade. Better than nothing.", value: 22, quantity: 1, stats: { attack: 8 } }) },
+    { chance: 0.25, make: () => ({ id: itemId(), itemType: "potion", name: "Stolen Potion", description: "A filched vial. Restores 50 HP.", value: 12, quantity: 1, stats: { hp: 50 } }) },
+    { chance: 0.1,  make: () => ({ id: itemId(), itemType: "armor",  name: "Leather Cap", description: "Worn leather cap. Provides light defense.", value: 28, quantity: 1, stats: { defense: 5 } }) },
+  ],
+  skeleton: [
+    { chance: 0.3, make: () => ({ id: itemId(), itemType: "weapon", name: "Bone Sword",   description: "Carved from ancient bones. Surprisingly sharp.", value: 55, quantity: 1, stats: { attack: 15 } }) },
+    { chance: 0.2, make: () => ({ id: itemId(), itemType: "armor",  name: "Bone Shield",  description: "Reinforced bone fragments. Decent protection.", value: 48, quantity: 1, stats: { defense: 10 } }) },
+    { chance: 0.3, make: () => ({ id: itemId(), itemType: "potion", name: "Dark Elixir",  description: "Restores 80 HP with dark energy.", value: 20, quantity: 1, stats: { hp: 80 } }) },
+  ],
+  wolf: [
+    { chance: 0.35, make: () => ({ id: itemId(), itemType: "armor",  name: "Wolf Pelt",   description: "Thick wolf fur. Provides warmth and defense.", value: 40, quantity: 1, stats: { defense: 8 } }) },
+    { chance: 0.2,  make: () => ({ id: itemId(), itemType: "weapon", name: "Wolf Fang",   description: "A razor-sharp fang. Used as a makeshift weapon.", value: 45, quantity: 1, stats: { attack: 12, speed: 1 } }) },
+    { chance: 0.15, make: () => ({ id: itemId(), itemType: "material", name: "Beast Core", description: "Dense energy core. Valuable trade item.", value: 35, quantity: 1 }) },
+  ],
+};
+
+function rollLoot(kind: MonsterKind): Item[] {
+  const table = LOOT_TABLES[kind] ?? [];
+  return table.filter(entry => Math.random() < entry.chance).map(entry => entry.make());
+}
 
 const AGENT_NAMES = [
   "PixelKnight", "ShadowArcher", "RuneWizard", "IronShield",
@@ -167,6 +240,7 @@ export class GameSimulator {
   private entities = new Map<string, Entity>();
   private agentStates = new Map<string, AgentState>();
   private respawnQueue: RespawnEntry[] = [];
+  private droppedItems = new Map<string, DroppedItem>();
   private listeners = new Set<SimListener>();
   private tickTimer: ReturnType<typeof setInterval> | null = null;
   private playerId: string;
@@ -214,6 +288,60 @@ export class GameSimulator {
 
   setPlayerMove(direction: Direction | null, position: WorldPosition | null) {
     this.playerInput = { direction, position };
+  }
+
+  pickUpItem(droppedItemId: string) {
+    const dropped = this.droppedItems.get(droppedItemId);
+    if (!dropped) return;
+    const player = this.entities.get(this.playerId) as PlayerEntity | undefined;
+    if (!player) return;
+    // Add to player inventory
+    if (!player.inventory) (player as unknown as { inventory: Item[] }).inventory = [];
+    (player as unknown as { inventory: Item[] }).inventory.push(dropped.item);
+    this.droppedItems.delete(droppedItemId);
+    this._emit({ type: "item_picked_up", itemId: droppedItemId, playerId: this.playerId });
+  }
+
+  changeZone(targetZoneId: string) {
+    const zoneKey = targetZoneId as ZoneKey;
+    const zoneDef = ZONES[zoneKey];
+    if (!zoneDef) return;
+
+    // Rebuild tilemap for new zone
+    const zt = ZONE_TILEMAPS[zoneKey] || generateZoneTilemap(zoneDef);
+    this.tilemap = zt as unknown as TileMap;
+
+    // Move player to new spawn
+    const player = this.entities.get(this.playerId) as PlayerEntity | undefined;
+    if (player) {
+      player.position = safeSpawn(this.tilemap);
+      this.entities.set(this.playerId, player);
+    }
+
+    // Clear non-player entities and respawn zone-specific monsters
+    for (const [id, e] of this.entities) {
+      if (e.type !== "player") {
+        this.entities.delete(id);
+        this.agentStates.delete(id);
+      }
+    }
+    this.droppedItems.clear();
+
+    // Spawn zone monsters
+    const monsterCount = zoneDef.monsterCount || SIM_CONFIG.MONSTER_COUNT;
+    for (let i = 0; i < monsterCount; i++) {
+      const kind = zoneDef.monsterPool[Math.floor(Math.random() * zoneDef.monsterPool.length)] as MonsterKind;
+      if (MONSTER_TEMPLATES[kind]) this._spawnMonster(kind);
+    }
+
+    this._emit({
+      type:         "init",
+      playerId:     this.playerId,
+      zoneId:       targetZoneId,
+      tilemap:      this.tilemap,
+      entities:     [...this.entities.values()],
+      droppedItems: [],
+    });
   }
 
   setPlayerAttack(targetId: string) {
@@ -376,9 +504,15 @@ export class GameSimulator {
       type: "state_snapshot",
       timestamp: now,
       entities: [...this.entities.values()],
-      droppedItems: [],
+      droppedItems: [...this.droppedItems.values()],
       damages: [],
     });
+
+    // Clean up old dropped items (30s TTL)
+    const now2 = now;
+    for (const [id, item] of this.droppedItems) {
+      if (now2 - item.droppedAt > 30000) this.droppedItems.delete(id);
+    }
   }
 
   // ---- Player update -----------------------------------------------------
@@ -614,6 +748,22 @@ export class GameSimulator {
           }
           this.entities.set(player.id, player);
         }
+      }
+    }
+
+    // Drop loot if monster
+    if (target.type === "monster") {
+      const items = rollLoot((target as MonsterEntity).kind as MonsterKind);
+      for (const item of items) {
+        const dropped: DroppedItem = {
+          id: `drop_${Date.now()}_${item.id}`,
+          item,
+          position: { ...target.position },
+          zoneId: "zone_start",
+          droppedAt: Date.now(),
+        };
+        this.droppedItems.set(dropped.id, dropped);
+        this._emit({ type: "item_dropped", droppedItem: dropped });
       }
     }
 
